@@ -7,7 +7,7 @@
 //#include <stdlib.h>//終了時のexit()関数が入っている itoa関数（intからcharへの変換）
 
 namespace ActiveMath {
-#define JoypadInputMax 31//０番は使用していない
+#define JoypadInputMax 40//０番は使用していない
 //■アクション番号の定義
 #define ActMax 50//０番は使用していない
 /////////////////////////
@@ -15,16 +15,16 @@ namespace ActiveMath {
 #define Act_BackSpace 2
 #define Act_NextPosition 3
 #define Act_Delete 4
-#define Act_PrevIndex 5
-#define Act_NextIndex 6
-#define Act_TextCursorLeft 7
-#define Act_TextCursorRight 8
+#define Act_TextCursorLeft 5
+#define Act_TextCursorRight 6
+#define Act_PrevIndex 7
+#define Act_NextIndex 8
 #define Act_BtnCursorDown 15
 #define Act_BtnCursorLeft 16
 #define Act_BtnCursorRight 17
 #define Act_BtnCursorUp 18
-#define Act_LeverX 29
-#define Act_LeverY 30
+#define Act_AreaUp 31
+#define Act_AreaDown 32
 #define Act_AreaChangeFirst 33
 #define Act_AreaChangeSecond 34
 #define Act_ScrollMsg 41
@@ -32,6 +32,8 @@ namespace ActiveMath {
 
 ////////　変　数　////////
 	//■変数
+	extern int FrameRate;
+
 	extern int MouseX;
 	extern int MouseY;
 	extern int Key[256];
@@ -42,6 +44,12 @@ namespace ActiveMath {
 	extern int Action[ActMax];
 
 	extern int SystemFontSize;
+
+	extern const char *CursorOverString_p;
+	extern int ActiveElement_G;//ParsedMsgの要素番号
+	extern int ChangingAlignmentNo;//（0：書き換えない　0以外の値：書き換える要素番号）
+	extern int ActiveTagElement;//#***{}の#の要素番号
+	extern int ActiveTagMojisuu;//#***{}の***の文字数
 
 	////////////////////////////
 
@@ -77,7 +85,6 @@ namespace ActiveMath {
 	extern char LocalDir[MAX_PATH];
 	extern char MsgDir[MAX_PATH];
 
-	extern const char *CursorOverString_p;
 
 ////////　構　造　体　の　定　義　////////
 	//■エリア
@@ -110,9 +117,9 @@ namespace ActiveMath {
 		int Width = 0;//コントロールの幅
 		int Height = 0;//コントロールの高さ
 		int BackTransparency = 0;//背景の透過度（%）
-		int BackColor;//背景色のハンドル
-		int BorderColor;//枠線の色のハンドル
-		int CursorColor;//カーソル色のハンドル
+		int BackColor = NULL;//背景色のハンドル
+		int BorderColor = NULL;//枠線の色のハンドル
+		int CursorColor = NULL;//カーソル色のハンドル
 		int Active = -1;//（-１：非表示　０：使用不可状態（ボタンのタイトルを薄く表示して無反応）　１：待機状態（ボタンの表示・反応）　２：ボタンを表示するが無反応）
 		int RowKosuu = 1;
 		int RowPadding[4] = { 0 };
@@ -185,7 +192,7 @@ namespace ActiveMath {
 		int Parent = 0;//親タグの番号　旧oyatagno
 
 		char Name[10 + 1] = { 0 };//タグ要素名
-		int Post = 0;//ポスト（１５：改行・折返し禁止のブロック　３：改行禁止のブロック　１：メンバー　０：その他　－１：カラのメンバー）
+		int Post = 0;//ポスト（１５：改行・折返し禁止　３：改行禁止　１：その他　０：メンバー　－１：カラのメンバー）
 		int Control = -1;//TagType　　　Tag[0]はClickMojiの代用だからTag[0]=-1
 		int Pattern = 0;//線の太さ（ピクセル数）　値が0でないときに線の描画処理を行うlineH
 		int ArgX = 0;//枠位置または文字位置からのX方向の位置　文字サイズに対する割合（％）lineX
@@ -207,7 +214,9 @@ namespace ActiveMath {
 		int FirstNumInParsedMsg = 0;//適用開始位置　旧kaishi
 		int LastNumInParsedMsg = 0;//適用終了位置　旧syuuryou
 		int MemberCount = 0; //メンバータグの出現数。初期値は０。メンバーをもつブロックのみ使用。
-		int TagSign = 1;//２の倍数（TagTypeで決まる）：数式（スペースの禁止，<math>の付加）　３の倍数（Postで決まる）：ブロック（改行の禁止，折返しの禁止）//Tag[0].TagSignはActiveTagSignとして代用（-１：タグを読み込まない　１：タグを読み込む　その他の値は各種）
+		int TagSign = 1;//Postから取得して子に継承　２の倍数：メンバーに<m></m>の付加を禁止　３の倍数：改行の禁止　５の倍数：折返しの禁止　
+						//Patternから取得して子に継承　７：文字の下に線#u　１１：文字の上に線#o　
+						//Tag[0].TagSignはActiveTagSignとして代用（-１：タグを読み込まない　１：タグを読み込む　その他の値は各種）
 		//ReadMathTag内のみで使用
 		int WakukaraKotag;//子タグが親枠結合であることを示す。子タグから指定される（ConnectionP==1のときに親タグのwakukarakotagの値が１となる）　１：ターン処理（ファイルへの読み書きは不要）　累乗，下付き文字，積分後，リスト類，テーブル類，noc（順列・組合せ類）
 	};
@@ -223,51 +232,56 @@ namespace ActiveMath {
 		int BackColor = GetColor(0, 0, 0);//背景色のハンドル（指定しない）
 		int BackTransparency = 50;//背景の透過度（%）
 		int ActiveTagColor = GetColor(255, 255, 0);//アクティブなタグの色ハンドル（指定しない）
-		int ActiveTagColorTransparency = 70;//アクティブなタグの色の透過度（%）
+		int ActiveTagTransparency = 80;//アクティブなタグの透過度（%）
 		int ActiveMathColor = GetColor(204, 255, 255);//背景色のハンドル（指定しない）
-		int ActiveMathColorTransparency = 80;//背景の透過　アルファブレンディングのパラメータ（値が２５５に近いほど背景が濃く表示される)
+		int ActiveMathTransparency = 80;//アクティブな数式タグの透過度（%）（値が２５５に近いほど背景が濃く表示される)
 
 		int FontColorRGB[3] = { 255, 255, 255 };//文字色RGB
 		int FontColor = GetColor(255, 255, 255);//文字色ハンドル
 
-		int Leading = 5;//行間[18]
-		int BlinkSpeed = 120;//カーソルの点滅スピード（１分間に点滅する回数)（[15]）60000の約数がよい。三角カーソルのときはパディング[3]をプラスしておくとよい
-		int OutputSpeed = 50;//文字の出力スピード（プラス：１秒間に進む文字数　マイナス：クリックに反応する）1000の約数がよい
-							 //つまり（プラス：パカパカあり。カーソルなし。　0：パカパカなし。カーソルなし。　-1：パカパカなし。クリック後からカーソルあり。　-2以下：パカパカなし。元からカーソルあり。）
-		int ScrollSpeed = 200;//スクロールのスピード（１秒間にスクロールするピクセル）（[14]）1000の約数がよい
-		int Option = 11444;//
+		int Leading = 30;//行間[18]
+		int BlinkSpeed = 90;//カーソルの点滅スピード（１分間に点滅する回数)（[15]）60000の約数がよい。三角カーソルのときはパディング[3]をプラスしておくとよい
+		int OutputSpeed = 50;//文字の出力スピード（１秒間に進む文字数）1000の約数がよい　※文字ごとにパカパカ出力する。カーソルは表示しない。
+							//マイナスの場合，入力モードとなる。（-1：クリック後からカーソルあり　-2以下：元からカーソルあり）　※カーソルを表示する。パカパカはしない。
+
+		int ScrollSpeed = 3;//スクロールのスピード（１フレームにスクロールするピクセル）
+		int Option = 0;//
 		//Soundからの相対パスまたはファイル名（ただしエディターでは相対パスが入る仕様）でからロードしたハンドル
-		int MsgSound = -1;//メッセージ音（パカパカ音，メッセージカーソルのジャンプ音，メッセージカーソルの移動音）
-		int ConfirmSound = -1;//確定音（フレーズ書き終え状態，ウィンドウが満杯の状態のときにボタンを押した音。入力の確定音）
-		int BackDelSound = -1;//バックスペース・デリート音，フォームが出る音
+		int OpeningSound = -1;//開始音（入力状態：バックスペースやデリートのときの音）
+		int MsgSound = -1;//行ごとに鳴らす書き出しの音（入力状態：カーソルがジャンプするときの音）
+		int ConfirmSound = -1;//フレーズ書き終え状態，ウィンドウが満杯の状態のときにボタンを押した音（入力状態：数式などが確定するときの音）
 		/*
-		下１桁目　０：左流れ　１：上り　２：右流れ　３：下り　５：ジョイパッド　それ以外（４）：スクロールなし
-		下２桁目　０：左端　１：上端　２：右端　３：下端　それ以外（４）：ボックス左上
-		下３桁目　左か右流れで０：左寄せ　上りまたは下りで１：上寄せ　左または右流れで２：右寄せ　上りか下りで３：下寄せ　４：自動　５：ループ　それ以外（6）：通過（上りで左寄せを指定した場合なども通過となる）
-		下４桁目　０：折り返しなし（MaxLineは無効になる）　１：折り返しあり　２：折り返しあり（わかち）
-		下５桁目　ボックス下端　０：指定した高さ　１（0より大きく2，3を除く）：表示後のメッセージ下端　２：表示中のメッセージ下端　３：表示中のメッセージ下端（Heightの値も変化）※３はパカパカにはあるがスクロールにはない（スクロールでは１と同じになる）
+		下１桁目　０：スクロールなし　１：左流れ　２：左流れ(ボックス)　３：上り　４：上り(ボックス)　５：右流れ　６：右流れ(ボックス)　７：下り　８：下り(ボックス)　９：ジョイパッド
+		下２桁目　０：左上　１：左上の左　２：左上の上　３：右上の右　４：左下の下
+		下３桁目　０：自動　１：左寄せ　２：上寄せ　３：右寄せ　４：下寄せ　５：ループ　６（1～5以外）：通過（上りで左寄せを指定した場合なども通過となる）
+		下４桁目　幅　　０：文字と数式で折り返し・指定した幅　１：わかちと数式で折り返し・指定した幅　
+						２：折り返しと改行なし・指定した幅　３：折り返しと改行なし・メッセージの幅　※2，3はMaxLineが無効
+						４：折り返しなし・指定した幅　５：折り返しなし・メッセージの幅
+		下５桁目　高さ　０：指定した高さ　１：メッセージの高さ
 		*/
 	};
-	//■メッセージボックスフォーム2（RGB，ファイルパス）※エディターで使用
-	struct MSG_BOX_RGB_SOUNDPATH {
+	//■メッセージボックスフォームGGBサウンドパス　※エディターで使用
+	struct MSG_BOX_FORM_RGB_SOUNDPATH {
 		int BorderColorRGB[3] = { 255, 255, 255 };//枠線の色
 		int BackColorRGB[3] = { 0, 0, 0 };//背景色のハンドル（指定しない）
 		int ActiveTagColorRGB[3] = { 255, 255, 0 };//背景色のハンドル（指定しない）
 		int ActiveMathColorRGB[3] = { 204, 255, 255 };//背景色のハンドル（指定しない）
 		//Soundからの相対パスまたはファイル名（ただしエディターでは相対パスが入る仕様）
-		char MsgSoundPath[MAX_PATH] = { 0 };//メッセージ音のパス（パカパカの音　ジャンプ音）
-		char ConfirmSoundPath[MAX_PATH] = { 0 };//確定音のパス（フレーズ書き終え状態，ウィンドウが満杯の状態のときにボタンを押した音。入力の確定音）
-		char BackDelSoundPath[MAX_PATH] = { 0 };//バックスペース・デリートの音のパス
+		char OpeningSoundPath[MAX_PATH] = { 0 };//開始音のパス（入力状態：バックスペースやデリートのときの音のパス）
+		char MsgSoundPath[MAX_PATH] = { 0 };//行ごとに鳴らす書き出しの音のパス（入力状態：カーソルがジャンプするときの音のパス）
+		char ConfirmSoundPath[MAX_PATH] = { 0 };//フレーズ書き終え状態，ウィンドウが満杯の状態のときにボタンを押した音のパス（入力状態：数式などが確定するときの音のパス）
 	};
 	//■メッセージボックス
-#define TAG_MAX_for_MSG_BOX_CTRL 300//（メンバーにTagを持っているから最大値を定義しておく必要がある）
+#define TAG_MAX_for_MSG_BOX_CTRL 600//（メンバーにTagを持っているから最大値を定義しておく必要がある）
 	struct MSG_BOX_CTRL {
-		struct AREA_CTRL *ParentArea_p = NULL;//エリア（始点と大きさの情報）のポインター
-		struct MSG_BOX_FORM *MsgBoxForm_p = NULL;//フォーム（始点と大きさの情報）のポインター（ロード時はフォームの要素番号MsgBoxFormNumberでポインターを指定）
-
-		int Location[2] = { 0,0 };//コントロールの座標（[0]左端[1]上端）
+		//ファイルから値をロードするメンバー
+		struct MSG_BOX_FORM *MsgBoxForm_p = NULL;//フォームのポインター（ロード時はフォームの要素番号MsgBoxFormNumberでポインターを指定）
 		int Width = 600;//コントロールの幅
 		int Height = 250;//コントロールの高さ（高さ伸縮タイプではメッセージの高さから算出。ただしタイプ105（スクロールありの高さ伸縮でメッセージボックス下り)のときは領域内のメッセージの高さから算出。）
+		//ロード後に値を指定するメンバー
+		struct AREA_CTRL *ParentArea_p = NULL;//エリアのポインター
+		int Location[2] = { 0,0 };//コントロールの座標（[0]左端[1]上端）
+		//値を指定しないメンバー
 		int OuterWidth = 600;//マージンを含む幅（指定しない）
 		int OuterHeight = 250;//マージンを含む高さ（指定しない）
 		int MsgWidth = 0;//メッセージの高さ（コントロールの下端までの余ったスペースは含まない）
@@ -278,51 +292,37 @@ namespace ActiveMath {
 		struct TAG Tag[TAG_MAX_for_MSG_BOX_CTRL + 1];//タグの初期化（ローカル変数） = { 0 }//プラス１はTag[0]の分
 		char ParsedMsg[2000] = { "\0" };//タグを抜き取った文字列を入れる配列
 
-		//以下は，ClearMsgBox関数でリセットされるもの（※Tag[0].TagSign，Tag[0].ConnectionPもClearMsgBox関数でリセットされる）
-		int Condition = 1;//
+		//以下は，ClearMsgBox関数でリセットされるもの（※Tag[0].TagSign，Tag[0].ConnectionP，およびプラスのときのTag[0].PositionPもClearMsgBox関数でリセットされる。）
 		int StartingPointX = 0;//メッセージの全体の位置（ウィンドウベースの位置。縦スクロールを含まない）
 		int StartingPointY = 0;//メッセージの全体の位置（ウィンドウベースの位置。横スクロールを含まない）
-
-
-
 
 		int MsgX = 0;//メッセージ全体の書き出し位置（ウィンドウベースの位置。横スクロールを含む）（StartingPointX + 横スクロール累積値）
 		int MsgY = 0;//メッセージ全体の書き出し位置（ウィンドウベースの位置。縦スクロールを含む）（StartingPointY + 縦スクロール累積値）
 		int Stale = 0;//古くなってScrollTankに渡すことができる高さ
 		int ScrollTank = 0;//スクロールできる総量
-		int ScrollOne = 0;//１回のスクロール量の端数の累積（この値で１回のスクロール量と次の端数を算出）
+		//int ScrollOne = 0;//１回のスクロール量の端数の累積（この値で１回のスクロール量と次の端数を算出）
 		int PhraseOn = 0;//書き出し可能フレーズ番号（フレーズ書き終え後のボタンを押した数）（[8]）
 
 
 		int WaitTank = 0;//残りの待機フレーム数[20]
-		//int RemainWaitTime = 0;//残りの待機ミリ秒数
 		int WaitedFlame = 0;//待機したフレーム数[21]
-		int KakidashiLineMax = 0;//最大行番号（[7]）　　誤って指定したら途中からパカパカが始まるのかな？？？
+		int KakidashiLineMax = -1;//最大行番号（[7]）　　誤って指定したら途中からパカパカが始まるのかな？？？
 		int KakidashiTagMax = 0;//出てきたｉの現時点での最大タグ番号
 
 		int Switch = 0;//スイッチ（[22]）
 		int ShowMsgBoxFlag = 1;//０メッセージボックスを書き出さない　１：メッセージボックスを書き出す
 		int NonEnterable = 0;
-		//int Time = -1;
-		//int ElapsedTime = 0;
-
+		int Condition = 0;//
 		/*状態 Condition
-		//↓Conditionの0番は，文字書き出しループの条件が（Condition != 0）になっているだけだから不要？？？
-		0:書き出し不可																//ElapsedTimeが進む（10より小さい）//スクロールする（3以下）
-		1:書き出し可（初めて書き出す行の先頭）										//ElapsedTimeが進む（10より小さい）//スクロールする（3以下）
-		2:書き出し可（初めて書き出す行の先頭ではない）								//ElapsedTimeが進む（10より小さい）//スクロールする（3以下）
-		3:終端文字まで進んだ//旧8													//ElapsedTimeが進む（10より小さい）//スクロールする（3以下）
-
-		4:最終位置までスクロールした（ただし終端文字まで書き出し済みのとき）//旧6	//ElapsedTimeが進む（10より小さい）
-		5:終端文字まで書き出した後にボタン押した//旧7								//ElapsedTimeが進む（10より小さい）
-
-		11:フレーズ書き終え//旧3
-		12:ウィンドーが満杯//旧4
-		13:書く文字数だけ止める//旧5
-		/////////////////////
-		101：確定したことを示す（入力時のカーソルが最後まですすんだとき。確定ボタンを押したときは関係ないと思う）
-		102：次のカーソル位置に進んだとき
-		103：次のカーソル位置に進んだとき
+		0:書き出し可（初期状態）
+		1:書き出し可（新しい行の書き出し）
+		2:書き出し可（0，1以外）
+		3:終端文字まで進んだ						
+		4:最終位置までスクロールした（ただし終端文字まで書き出し済みのとき）
+		5:終端文字まで書き出した後にボタン押した
+		11:フレーズ書き終え
+		12:ウィンドーが満杯
+		13:ウィンドー満杯後のスクロールで，次の1行がボックス内に入るまで
 		*/
 	};
 	//■課題
@@ -335,7 +335,7 @@ namespace ActiveMath {
 #define SYOUMONSEIKAI_FIELDSIZE 200//小問正解の書き込み可能サイズ（\0を含まない）
 	//■課題
 	struct MONDAI_CTRL {
-		int monsterID = 0;//5桁＋終端
+		int monsterID = 0;//整数値
 		char daimon[DAIMON_FIELDSIZE + 1] = { "<p></p>" }; //大問文が入る
 		char daimonseikai[DAIMONSEIKAI_FIELDSIZE + 1] = { "<math></math>" }; //大問正解が入る
 		char syoumon[SYOUMON_MAX + 1][SYOUMON_FIELDSIZE + 1] = { 0 }; //小問文が入る　[小問数50　（＋１はコピー用バッファ）] [1バイト文字1000字まで]
@@ -362,6 +362,7 @@ namespace ActiveMath {
 		int IndexOn = 0;//オンになっているインデックス番号（インデックス０番をオンにする）190609
 		int PushedNo = 0;//最後に押されたボタン番号（カーソルの初期位置の設定は，これではなくボタンCSVのActivを3にする）
 		int Duration = 0;//ボタンが押された長さ
+		int Condition = 0;//１：ジャンプで</math>の後まで進んだ
 		struct INPUT_TEXT_BTN_CTRL *ActiveBtn_h;
 	};
 	//■モンスター
@@ -375,22 +376,22 @@ namespace ActiveMath {
 	};
 	//■メッセージのロード用変数
 	struct LOAD_MSG_SP {
-		const char *FilePath_h = NULL;
-		char *Msg_h = NULL;
-		int MsgSize = 10000;
-		const char *Dir_h = NULL;
-		struct MSG_BOX_FORM *MsgBoxForm_p;
-		struct MSG_BOX_CTRL *MsgBox_p;
-		int GetDirFlag = 1;//LoadMsgでMsgDir，LoadMsgBoxSetでLocalDirを取得
-		int MsgCodeLinkFlag = 1;
-		int JoypadLinkFlag = 1;
+		const char *FilePath = NULL;//acmファイルのパス
+		const char *Dir = NULL;//関連ファイルのディレクトリ（指定しないとき（NULL），acmファイルがあるディレクトリとなる）
+		int MsgCodeSize = 10000 + 1;//acmファイルをロードする配列変数のサイズ
+		char *MsgCode = NULL;//acmファイルをロードする配列変数
+		struct MSG_BOX_CTRL *MsgBox_p = NULL;//メッセージボックスファイルをロードする構造体変数のポインタ
+		struct MSG_BOX_FORM *MsgBoxForm_p = NULL;//メッセージボックスフォームファイルをロードする構造体変数のポインタ
+		bool SetMsgLocalDirFlag = TRUE;//MsgDir，LocalDirの取得の有無（TRUE：取得する　FALSE：取得しない）
+		bool MsgCodeLinkFlag = TRUE;//MsgCodeLinkファイルのロードの有無（TRUE：ロードする　FALSE：ロードしない）
+		bool JoypadLinkFlag = TRUE;//JoypadLinkファイルのロードの有無（TRUE：ロードする　FALSE：ロードしない）
 	};
 	//■問題のロード用変数
 	struct LOAD_MONDAI_SP {
-		const char *FilePath_h = NULL;
-		struct MONDAI_CTRL *Mondai_h = NULL;
+		const char *FilePath = NULL;
+		struct MONDAI_CTRL *Mondai = NULL;
 		int *Syoumon_Kosuu_p;
-		const char *Dir_h = NULL;
+		const char *Dir = NULL;
 		int MsgBoxForm_Max = 1;
 		struct MSG_BOX_FORM *MsgBoxForm_p;
 		int MsgBox_Max = 1;
@@ -400,13 +401,13 @@ namespace ActiveMath {
 		struct MONSTER_CTRL *Monster_p;
 		int *Column_Kosuu_p;
 		char(*ColumnTitle_p)[MONSTER_COLUMNTITLEFIELDMAX + 1];
-		int GetDirFlag = 1;//LoadMondaiでMsgDir，LoadMsgBoxSetでLocalDirを取得
-		int MsgCodeLinkFlag = 1;
-		int JoypadLinkFlag = 1;
+		bool SetMsgLocalDirFlag = TRUE;//LoadMondaiでMsgDir，LoadMsgBoxSetでLocalDirを取得
+		bool MsgCodeLinkFlag = TRUE;
+		bool JoypadLinkFlag = TRUE;
 	};
 	//■パッドののロード用変数
 	struct LOAD_DISPLAY_PAD_SP {
-		const char *FilePath_AreaSet_h = NULL;
+		const char *FilePath_DisplayPad_h = NULL;
 		struct AREA_CTRL *ParentArea_p = NULL;
 		struct DISPLAY_PAD_CTRL *DisplayPad_p;
 		int Area_Max = 1;
@@ -415,9 +416,9 @@ namespace ActiveMath {
 		const int *Btn_Max_h;
 		int BaseBtn_Max = 1;
 		//フラグ
-		int GetDirFlag = 1;
-		int MsgCodeLinkFlag = 1;
-		int JoypadLinkFlag = 1;
+		bool SetMsgLocalDirFlag = TRUE;
+		bool MsgCodeLinkFlag = TRUE;
+		bool JoypadLinkFlag = TRUE;
 	};
 
 
@@ -435,7 +436,7 @@ namespace ActiveMath {
 	//■フレームレートの変更
 	int ChangeFPS(int FPS);
 	//■早すぎたら待機
-	int SleepToFitFPS(int FPS);
+	int SleepToFitFPS();
 	//■瞬間フレームレートの測定（Nフレームごとの瞬間）
 	float MeasureInstantFPS(int N);
 	//■平均フレームレートの測定（Nフレームの平均値）
@@ -446,6 +447,8 @@ namespace ActiveMath {
 	int MathgpUpdateKey();
 	//■ジョイパッドの入力状態を更新
 	int MathgpUpdateJoypad();
+	//■キーボードの入力情報をジョイパッドに変換（F1でオン・オフ切り替え）
+	int ConvertKeyIntoJoypad();
 	//■エリアセットのロードと設定（ロードした値を元に各パラメータの値を決定する）
 	int LoadAreaSet(const char *FilePath, struct AREA_CTRL *Area_h, int *Area_Kosuu_p, int Area_Max, struct AREA_CTRL *ParentArea_p);
 	//■フォントスタイルのロードとフォントハンドルの作成
@@ -461,21 +464,21 @@ namespace ActiveMath {
 	//■ジョイパッドスタイルのリンクのロード
 	int LoadJoypadLink(const char *FilePath);
 	//■メッセージボックスフォームのロード
-	int LoadMsgBoxFormSet(const char *FilePath, struct MSG_BOX_FORM *MsgBoxForm_h, int MsgBoxForm_Max);
+	int LoadMsgBoxFormSet(const char *FilePath, struct MSG_BOX_FORM *MsgBoxFormSet, int MsgBoxForm_Max);
 	//■メッセージボックスフォームの画像パス，RGBのロード
-	int LoadMsgBoxRgbSoundPathSet(const char *FilePath, struct MSG_BOX_RGB_SOUNDPATH *MsgBox_RGB_SoundPath_h, int MsgBoxForm_Max);
+	int LoadMsgBoxFormRgbSoundPathSet(const char *FilePath, struct MSG_BOX_FORM_RGB_SOUNDPATH *MsgBox_RGB_SoundPath_Set, int MsgBoxForm_Max);
 	//■メッセージボックスコントロールのロード
-	int LoadMsgBoxSet(const char *FilePath, struct MSG_BOX_FORM *MsgBoxForm_h, struct MSG_BOX_CTRL *MsgBox_h, int MsgBoxForm_Max, int MsgBox_Max, int GetDirFlag);
+	int LoadMsgBoxSet(const char *FilePath, struct MSG_BOX_FORM *MsgBoxFormSet, int MsgBoxForm_Max, struct MSG_BOX_CTRL *MsgBoxSet, int MsgBox_Max, bool SetLocalDirFlag);
 	//■メッセージのロード
-	int LoadMsg(const char *FilePath, char *Msg, int MsgSize, int GetDirFlag);
+	int LoadMsg(const char *FilePath, char *MsgCode, int MsgCodeSize, bool SetMsgDirFlag);
 	//■メッセージとその関連ファイルのロード
 	int LoadMsgSP(struct LOAD_MSG_SP *m);
 	//●モンスターのロード
 	int LoadMonster(const char* FilePath, struct MONSTER_CTRL *Monster_h, int Monster_Max, int *Monster_Kosuu, char(*ColumnTitle_h)[MONSTER_COLUMNTITLEFIELDMAX + 1], int *Column_Kosuu);
 	//●モンスター画像パスのロード
-	int LoadMonsterImgTitle(const char *FilePath, char(*MonsterImgTitle_h)[MAX_PATH], int Monster_Max, int *IssuedMoonsterID_p);//int *IssuedMoonsterID_pは発行済み最大ID（エディターで使用）
+	int LoadMonsterImgTitle(const char *FilePath, char(*MonsterImgTitle_h)[MAX_PATH], int Monster_Max);
 	//●問題のロード
-	int LoadMondai(const char *FilePath, struct MONDAI_CTRL *Mondai, int *Syoumon_Kosuu_p, int GetDirFlag);
+	int LoadMondai(const char *FilePath, struct MONDAI_CTRL *Mondai, int *Syoumon_Kosuu_p, bool SetMsgDirFlag);
 	//●問題とその関連ファイルのロード
 	int LoadMondaiSP(struct LOAD_MONDAI_SP *m_p);
 	//■ボタンフォームセットのロード
@@ -491,31 +494,31 @@ namespace ActiveMath {
 	//■ファイルパスからディレクトリを取得（エディターでは現状使っていない）
 	int GetDirFromPath(char *Dir, const char *FilePath);
 	//■ローカルディレクトリ，メッセージディレクトリのパスの取得
-	int SetLocalDirMsgDirFromMsgPath(const char *FilePath);
+	//int SetLocalDirMsgDirFromMsgPath(const char *FilePath);
 
 	//■カーソルオーバー
-	int Math_CursorOver(int LocationX1, int LocationY1, int Padding, int StringColor, int BackColor, int Type);
+	int Math_CursorOver(int x, int y, int Padding, unsigned int StringColor, unsigned int BackColor);
 	//■マルチガイド
-	int MultiGuide();
+	int MultiGuide(int x, int y, const char *MsgCode, struct MSG_BOX_CTRL *MsgBox_p);
 	//■オーバーラップ　追加する領域を受け取って，元の描画可能領域および，元の描画可能領域と重複した領域を取得する（重複した領域NewRange　追加する領域AddRange）
 	int Overlap(int *NewRange, const int *AddRange);
-	//■画像の上下位置の変更
-	int ChangeImgAlign(char *Msg, struct MSG_BOX_CTRL *MsgBox_p);
-	//■メッセージボックスの高さの初期値表示
-	int ShowHeightGauge(struct MSG_BOX_CTRL *MsgBox, int MasterHeight, int Color);
 
 	//■エリアの表示
 	int ShowArea(struct AREA_CTRL *Area_h, int Area_Kosuu);
+	//■タグの個数を取得
+	int GetTagKosuu(const char *MsgCode);
 	//■タグを読み取る関数
-	int ReadMathTag(const char *Msg, struct TAG *Tag, int TagSaidai, char *ParsedMsg, const int *FontColorRGB);
+	int ReadMathTag(const char *Msg, struct TAG *Tag, int TagSaidai, char *ParsedMsg, const int *ColorRGB);
 	//■タグの再読み込み指示（DrawMsg用）
 	int ReparseTag(struct TAG *Tag_h);
 	//■タグの再読み込み指示
 	int Reparse(struct MSG_BOX_CTRL *MsgBox_p);
 	//■アクティブ要素の非アクティブ化（ActiveElementを-1）
 	int EraseActiveElement(struct MSG_BOX_CTRL *MsgBox_p);
-	//■アクティブ要素の取得（ActiveElementを0）
+	//■アクティブ要素の取得（戻り値で取得）
 	int GetActiveElement(struct MSG_BOX_CTRL *MsgBox_p);
+	//■アクティブ要素の指定（リフレッシュするときは第２引数に0を指定）
+	int SetActiveElement(struct MSG_BOX_CTRL *MsgBox_p, int ActiveElement);
 
 	//■メッセージボックスのリセット
 	int ClearMsgBox(struct MSG_BOX_CTRL *MsgBox_p);
@@ -540,15 +543,18 @@ namespace ActiveMath {
 	//■パッドのリセット
 	int ResetDisplayPad(struct DISPLAY_PAD_CTRL *DisplayPad_p, int OnIndexNumber);
 
-	//■シンプル出力（数式＋フレームワーク）　（メッセージボックスコントロール不要）
-	int DrawMsg(int LocationX, int LocationY, const char *Msg, int *FontColorRGB, int FontColorHandle, const struct AREA_CTRL *ParentArea_p, int Tag_Saidai, struct TAG *Tag_h, char *ParsedMsg_p);//シンプルモード
+	//■シンプル出力
+	int DrawMsg(int LocationX, int LocationY, const char *Msg, int Tag_Saidai, struct TAG *Tag_h, char *ParsedMsg_p);//シンプルモード
+	//■メッセージ基本色の変更
+	int ChangeMsgBaseColor(unsigned int R, unsigned int G, unsigned int B, int Handle);
+
 	//■幅の取得
-	#define TAG_MAX_for_GetWidthForDrawMsg 1000//GetWidthForDrawMsgで読み込み可能なタグ1000個
-	int GetWidthForDrawMsg(const char *Msg, int *Width, int *Height, int *Tag_Kosuu);
+	//#define TAG_MAX_for_GetWidthForDrawMsg 1000//GetWidthForDrawMsgで読み込み可能なタグ1000個
+	//int GetWidthForDrawMsg(const char *Msg, int *Width, int *Height, int *Tag_Kosuu);
 	//■DrawString＋フレームワーク
-	int DrawStringInArea(int LocationX, int LocationY, const struct AREA_CTRL *ParentArea_p, const char *String_p, int Color);
+	int DrawStringInArea(int LocationX, int LocationY, const struct AREA_CTRL *ParentArea_p, const char *String_p, unsigned int Color);
 	//■DrawFormatString＋フレームワーク
-	int DrawFormatStringInArea(int LocationX, int LocationY, const struct AREA_CTRL *ParentArea_p, int Color, const char *String_p, ...);
+	int DrawFormatStringInArea(int LocationX, int LocationY, const struct AREA_CTRL *ParentArea_p, unsigned int Color, const char *String_p, ...);
 	int SetLocalDirFromMsgPath(const char *FilePath);
 	int SetMsgDirFromMsgPath(const char *FilePath);
 
