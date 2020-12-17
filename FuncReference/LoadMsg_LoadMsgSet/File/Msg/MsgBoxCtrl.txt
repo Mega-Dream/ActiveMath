@@ -1,4 +1,0 @@
-メッセージ
-MsgBoxFormNumber,0
-Width,500
-Height,130
