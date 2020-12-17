@@ -1,4 +1,0 @@
-‚Æ‚Î‚·
-MsgBoxFormNumber,0
-Width,130
-Height,42
