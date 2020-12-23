@@ -32,6 +32,7 @@ namespace ActiveMath {
 
 ////////@•Ï@”@////////
 	//¡•Ï”
+	char Version[];
 	extern int FrameRate;
 
 	extern int MouseX;
